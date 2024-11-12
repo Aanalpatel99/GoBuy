@@ -1,7 +1,7 @@
 # GoBuy - Instant Retail Checkout Solution
 
 **Developed By**  
-- *System Architect and Project Tech Lead*: Aanal Kamleshkumar Patel  
+- *System Architect and AI Developer*: Aanal Kamleshkumar Patel  
 - *App Developer*: Alpesh Prajapati  
 
 ---
@@ -36,9 +36,7 @@ The B2B dashboard equips retailers with powerful tools to manage their operation
 
 ## Technologies Used
 
-- **Frontend**: Developed with [insert frameworks used for the app, e.g., React Native, Swift, etc.].
-- **Backend**: [insert backend stack, e.g., Node.js, Python, etc.].
-- **Database**: [insert database technologies used, e.g., MongoDB, MySQL].
+- **Frontend**: Developed with kivy package.
 - **Machine Learning** (Planned): ML models for coupon recommendations on the B2B dashboard.
 
 ---
