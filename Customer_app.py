@@ -91,6 +91,8 @@ class CameraPreview(Image):
         self.capture = capture
         self.parent_screen = parent_screen
         self.fps = fps
+        self.size_hint = (None, None)  # Allow setting a custom size
+        self.size = (400, 200)  # Set width and height for barcode scanning
         Clock.schedule_interval(self.update, 1.0 / self.fps)
 
     def update(self, dt):
@@ -106,7 +108,7 @@ class CameraPreview(Image):
         
         try:
             # Flip the frame to invert the camera feed
-            frame = cv2.rotate(frame, cv2.ROTATE_180)  # Flip the frame both horizontally and vertically
+            frame = cv2.rotate(frame, cv2.ROTATE_180)  # Rotate the frame for proper orientation
             frame = cv2.flip(frame, 0)
 
             buf = frame.tobytes()
@@ -128,16 +130,21 @@ class CameraPreview(Image):
         except Exception as e:
             print(f"An error occurred during frame update: {e}")
 
-    def on_leave(self):
-        """Releases the camera when leaving the screen."""
+    def stop(self):
+        """Stops the camera feed."""
         if self.capture.isOpened():
             self.capture.release()
-            print("Camera released.")
+            print("Camera stopped.")
+
+    def on_leave(self):
+        if self.capture.isOpen():
+            self.capture.release()
+            self.stop()
 
 # Screen class for barcode scanning and payment processing
 class QRCodeScannerScreen(Screen):
     def __init__(self, app, wallet, **kwargs):
-        """Initializes the QR code scanner screen."""
+        """Initializes the barcode scanner screen."""
         super().__init__(**kwargs)
         self.app = app
         self.wallet = wallet
@@ -147,13 +154,30 @@ class QRCodeScannerScreen(Screen):
             return
         print("Camera successfully opened.")
         
-        layout = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        self.layout = BoxLayout(orientation='vertical', spacing=10, padding=10)
         
         # Add the camera preview
         self.camera_preview = CameraPreview(capture=self.capture, parent_screen=self)
-        layout.add_widget(self.camera_preview)
+        self.layout.add_widget(self.camera_preview)
 
-        self.add_widget(layout)
+        # Ready to Go button
+        self.ready_button = MDRaisedButton(
+            text="Ready to Go",
+            size_hint=(1, None),
+            height='50dp',
+            on_release=lambda x: self.app.switch_to_main_screen()
+        )
+        self.layout.add_widget(self.ready_button)
+
+        self.payment_label = MDLabel(
+            text="",
+            halign="center",
+            theme_text_color="Secondary",
+            font_style="H6"
+        )
+        self.layout.add_widget(self.payment_label)
+
+        self.add_widget(self.layout)
 
     def process_barcode_data(self, data):
         """Processes the barcode data and opens the item detail screen."""
@@ -161,7 +185,7 @@ class QRCodeScannerScreen(Screen):
         product_database = {
             "product123": {"name": "Product A", "price": 15.0},
             "product456": {"name": "Product B", "price": 20.0},
-            "product789": {"name": "Product C", "price": 25.0}
+            "0060410050910": {"name": "Chips", "price": 25.0}
         }
         product_info = product_database.get(data)
         if product_info:
@@ -171,6 +195,11 @@ class QRCodeScannerScreen(Screen):
         else:
             print("Product not found in the database.")
 
+    def show_payment_success(self):
+        """Displays the payment success message and stops the camera."""
+        self.layout.remove_widget(self.camera_preview)
+        self.payment_label.text = "Payment Successful"
+
     def on_leave(self):
         """Releases the camera when leaving the screen."""
         if self.capture.isOpened():
@@ -179,9 +208,10 @@ class QRCodeScannerScreen(Screen):
 
 # Item detail screen class
 class ItemDetailScreen(Screen):
-    def __init__(self, item_name, item_price, **kwargs):
+    def __init__(self, app, item_name, item_price, **kwargs):
         """Initializes the item detail screen."""
         super().__init__(**kwargs)
+        self.app = app
         self.item_name = item_name
         self.item_price = item_price
         self.quantity = 1  # Default quantity
@@ -204,16 +234,12 @@ class ItemDetailScreen(Screen):
         quantity_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height='50dp')
         decrease_button = MDRaisedButton(text="-", on_release=lambda x: self.update_quantity(-1))
         self.quantity_label = MDLabel(text=str(self.quantity), halign="center", font_style="H6")
-        increase_button = MDRaisedButton(text="+", on_release=lambda x: self.update_quantity(1))
+        increase_button = MDRaisedButton(text="+", on_release=lambda x: self.handle_payment())
 
         quantity_layout.add_widget(decrease_button)
         quantity_layout.add_widget(self.quantity_label)
         quantity_layout.add_widget(increase_button)
         layout.add_widget(quantity_layout)
-
-        # Ready to Go button
-        ready_button = MDRaisedButton(text="Ready to Go", size_hint=(1, None), height='50dp')
-        layout.add_widget(ready_button)
 
         self.add_widget(layout)
 
@@ -223,6 +249,11 @@ class ItemDetailScreen(Screen):
         if new_quantity > 0:
             self.quantity = new_quantity
             self.quantity_label.text = str(self.quantity)
+
+    def handle_payment(self):
+        """Handles payment and navigates to the scanner screen with a success message."""
+        self.app.switch_to_scanner()
+        self.app.scanner_screen.show_payment_success()
 
     def close_screen(self):
         """Closes the item detail screen."""
@@ -240,9 +271,9 @@ class MainApp(MDApp):
         main_screen = MainScreen(app=self, wallet=self.wallet, name='main')
         self.sm.add_widget(main_screen)
 
-        # Add the QR code scanner screen
-        scanner_screen = QRCodeScannerScreen(app=self, wallet=self.wallet, name='scanner')
-        self.sm.add_widget(scanner_screen)
+        # Add the barcode scanner screen
+        self.scanner_screen = QRCodeScannerScreen(app=self, wallet=self.wallet, name='scanner')
+        self.sm.add_widget(self.scanner_screen)
 
         return self.sm
 
@@ -250,9 +281,13 @@ class MainApp(MDApp):
         """Switches to the scanner screen."""
         self.sm.current = 'scanner'
 
+    def switch_to_main_screen(self):
+        """Switches to the main screen."""
+        self.sm.current = 'main'
+
     def open_item_detail_screen(self, item_name, item_price):
         """Opens the item detail screen."""
-        item_screen = ItemDetailScreen(item_name=item_name, item_price=item_price, name='item_detail')
+        item_screen = ItemDetailScreen(app=self, item_name=item_name, item_price=item_price, name='item_detail')
         self.sm.add_widget(item_screen)
         self.sm.current = 'item_detail'
 
